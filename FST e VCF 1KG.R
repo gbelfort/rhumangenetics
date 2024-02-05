@@ -1,3 +1,22 @@
+#======================================================
+# Calculo do Fst
+#=======================================================
+#
+# (C) Copyright 2024, by GP-PGx-UFTM and Contributors.
+#
+# 
+#-----------------
+#  
+#-----------------
+#
+# Original Author: Guilherme Belfort Almeida
+# Contributor(s):  Caique Manochio
+# Updated by (and date): Guilherme Belfort Almeida 05/02/2024
+#
+# Dependencies: R
+#
+# Command line:
+
 # RStudio -> Clicar na lupa acima e substituir GENEDADO pelo nome do gene a ser usado
 
 library('vcfR') 
@@ -38,26 +57,37 @@ merge <- left_join(transposto, Pops1KG, by= "ID")
 View(merge)
 # Encontrar o número das colunas a retirar, criar novo dataframe sem elas e colocar a ordem (ID, code, name e o resto everything)
 # Exemplo abaixo
-GENEDADO <- merge[ -c(130,129, 128, 127, 124, 123)] %>%
-  select(ID, Population.code, Population.name, everything())
+
+GENEDADO <- merge%>%
+  select(ID, Population.code, Population.name, everything()) %>%
+  select(-c("Sex","Biosample.ID","Superpopulation.code","Superpopulation.name",
+            "Population.elastic.ID", "Data.collections"))
+
 # renomear Population.code e Population.name para popCode e popName. adegenet não funciona se tiver nome de coluna com '.'
 names(GENEDADO)[names(GENEDADO) == "Population.code"] <- "popCode"
 names(GENEDADO)[names(GENEDADO) == "Population.name"] <- "popName"
 # Um indivíduo com pop.code IBS,IBS. Isso seria interpretado como uma população diferente já que uso popCode como base, mudei para IBS.
 GENEDADO[GENEDADO == 'IBS,IBS'] <- "IBS"
 GENEDADO[GENEDADO == 'IBS,MSL'] <- "IBS"
-GENEDADO[GENEDADO == '1|0'] <- "0|1"
+GENEDADO[GENEDADO == '1|0'] <- "1 0"
+GENEDADO[GENEDADO == '1|1'] <- "1 1"
+GENEDADO[GENEDADO == '0|1'] <- "0 1"
+GENEDADO[GENEDADO == '0|0'] <- "0 0"
+GENEDADO[GENEDADO == '2|0'] <- "2 0"
+GENEDADO[GENEDADO == '0|2'] <- "0 2"
+GENEDADO[GENEDADO == '1|2'] <- "1 2"
+GENEDADO[GENEDADO == '2|1'] <- "2 1"
+GENEDADO[GENEDADO == '2|2'] <- "2 2"
+#ad infinitum "X|X" <- "X X"
 
 # Fst:
-library(adegenet)
+
 library(poppr)
-library(dplyr)
 library(hierfstat)
 library(reshape2)
 library(ggplot2)
 library(RColorBrewer)
 library(scales)
-library(poppr)
 
 # Criar genind a partir de data frame. Separador padrão '|', coluna indivíduos GENEDADO$ID, populações GENEDADO$popCode
 # Ploidia 2|2
@@ -73,7 +103,8 @@ GENEDADO_gen <- df2genind(
 
 # Opcional: Selecionar apenas alguns "rs" dentro do VCF, por exemplo para usar apenas os polimorfismos. 
 # Manual, fazer uma lista com todos os polimorfismos antes e colar abaixo após 'popName', seguindo o formato
-GENEDADOpolimorf <- select(GENEDADO, 'ID', 'popCode','popName', 'rs4630', 'rs140309', 'rs2266635', 'rs2266637', 'rs2844008', 'rs11550605')
+GENEDADOpolimorf <- select(GENEDADO, 'ID', 'popCode','popName', "rs74837985", "rs140584594",
+                           "rs143315534","rs147668562","rs449856")
 )
 # Esse GENEDADOpolimorf substitui o banco GENEDADO no comando df2genind() acima
                            
@@ -123,10 +154,11 @@ fst.label = expression(italic("F")[ST])
 mid = max(fst.df$Fst) / 2
 
 # Gráfico heatmap
+#3 cores
 ggplot(data = fst.df, aes(x = Site1, y = Site2, fill = Fst))+
   geom_tile(colour = "black")+
   geom_text(aes(label = Fst), color="black", size = 3)+
-  scale_fill_gradient2(low = "blue", mid = "pink", high = "red", midpoint = mid, name = fst.label, limits = c(0, max(fst.df$Fst)), breaks = c(0, 0.01, 0.10, 0.15))+
+  scale_fill_gradient2(low = "blue", mid = "pink", high = "red", midpoint = mid, name = fst.label, limits = c(0, max(fst.df$Fst)), breaks = c(0.05, 0.15))+
   scale_x_discrete(expand = c(0,0))+
   scale_y_discrete(expand = c(0,0), position = "right")+
   theme(axis.text = element_text(colour = "black", size = 10, face = "bold"),
@@ -138,6 +170,8 @@ ggplot(data = fst.df, aes(x = Site1, y = Site2, fill = Fst))+
         legend.text = element_text(size = 10)
   )
 
+
+#2 cores
 ggplot(data = fst.df, aes(x = Site1, y = Site2, fill = Fst))+
   geom_tile(colour = "black")+
   geom_text(aes(label = Fst), color="black", size = 3)+
@@ -152,6 +186,10 @@ ggplot(data = fst.df, aes(x = Site1, y = Site2, fill = Fst))+
         legend.title=element_text(size=14,face="bold"),
         legend.text=element_text(size=10)
   )
+
+
+
+#alternativa
 
 library(ggplot2)
 library(reshape2)
@@ -174,5 +212,3 @@ ggplot(data = dados_long, aes(x = Var1, y = Var2, fill = value)) +
         legend.title=element_text(size=14,face="bold"),
         legend.text=element_text(size=10)
   )
-
-
