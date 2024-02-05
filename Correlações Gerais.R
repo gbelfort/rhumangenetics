@@ -1,8 +1,26 @@
-library(openxlsx)
+#======================================================
+# Calculo de correlação entre frequencia alélica e media de ancestralidade 
+#=======================================================
+#
+# (C) Copyright 2023, by GP-PGx-UFTM and Contributors.
+#
+# 
+#-----------------
+#  
+#-----------------
+#
+# Original Author: Guilherme Belfort Almeida
+# Contributor(s):  Caique Manochio
+# Updated by (and date): Guilherme Belfort Almeida 05/02/2024
+#
+# Dependencies: R
+#
+# Command line:
+
 library(clipr)
 
-#Lê o arquivo da Frequência Alélica e cria uma lista com os SNPs
-df <- read.xlsx(#Caminho+NomeInputaqui")
+#Lê o Excel da Frequência Alélica e cria uma lista com os SNPs
+df <- read.xlsx(file.choose())
 lista_snps <- unique(grep("^.+(.1)$",names(df), value=TRUE, perl = TRUE))
 
 
