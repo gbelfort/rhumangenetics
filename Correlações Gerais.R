@@ -18,6 +18,7 @@
 # Command line:
 
 library(clipr)
+library(readxl)
 
 #Lê o Excel da Frequência Alélica e cria uma lista com os SNPs
 df <- read.xlsx(file.choose())
