@@ -1,13 +1,33 @@
+#======================================================
+# Teste qui-quadrado a partir de excel
+#=======================================================
+#
+# (C) Copyright 2024, by GP-PGx-UFTM and Contributors.
+#
+# 
+#-----------------
+#  
+#-----------------
+#
+# Original Author: Guilherme Belfort Almeida
+# Contributor(s):  Caique Manochio
+# Updated by (and date): Guilherme Belfort Almeida 05/02/2024
+#
+# Dependencies: R
+#
+# Command line:
+
+
 library(readxl) # Carrega o pacote readxl para ler arquivos do Excel
 library(dplyr) # Carrega o pacote dplyr para manipular dados
 library(tools) # Carrega o pacote tools para trabalhar com nomes de arquivos
 
-#Input
-InputGene <- "C:/Users/guilh/OneDrive/Área de Trabalho/Tuberculose/XPO1.xlsx" # Define o caminho do arquivo de entrada
+#Input Excel
+InputGene <- "CAMINHO/arquivo.xlsx" # Define o caminho do arquivo de entrada
 #Ou escolher na pasta InputGene <- file.choose() # Ou permite ao usuário escolher o arquivo de entrada
 
 # Diretório Output (se não existir o caminho ele é criado sozinho aqui)
-directory <- "C:/Users/guilh/OneDrive/Área de Trabalho/Tuberculose/pvalor" # Define o caminho do diretório de saída
+directory <- "CAMINHOPASTA/SUBPASTA" # Define o caminho do diretório de saída
 
 nome_gene <- file_path_sans_ext(basename(InputGene)) # Extrai o nome do gene do nome do arquivo de entrada
 # Função para fazer os testes de forma automática
