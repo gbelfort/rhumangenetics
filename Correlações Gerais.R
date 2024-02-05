@@ -2,7 +2,7 @@
 # Calculo de correlação entre frequencia alélica e media de ancestralidade 
 #=======================================================
 #
-# (C) Copyright 2023, by GP-PGx-UFTM and Contributors.
+# (C) Copyright 2024, by GP-PGx-UFTM and Contributors.
 #
 # 
 #-----------------
