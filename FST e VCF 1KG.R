@@ -29,7 +29,6 @@ library('dplyr')
 vcfGENEDADO <- read.vcfR(file.choose())
 
 # meta data, fixed data e genotype data
-# genotype é o que tá importando aqui, fixed é informação do cromossomo e meta é meta
 
 # montar genotype data em dataframe
 gt <- extract.gt(vcfGENEDADO, element = "GT")
