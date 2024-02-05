@@ -1,3 +1,24 @@
+#======================================================
+# Calculo da Frequência Alélica de VCF
+#=======================================================
+#
+# (C) Copyright 2024, by GP-PGx-UFTM and Contributors.
+#
+# 
+#-----------------
+#  
+#-----------------
+#
+# Original Author: Guilherme Belfort Almeida
+# Contributor(s):  Caique Manochio
+# Updated by (and date): Guilherme Belfort Almeida 05/02/2024
+#
+# Dependencies: R
+#
+# Command line:
+
+# RStudio -> Clicar na lupa acima e substituir GENEINPUT pelo nome do gene a ser usado
+
 library(adegenet)
 library(vcfR)
 
