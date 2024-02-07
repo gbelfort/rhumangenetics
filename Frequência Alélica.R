@@ -9,9 +9,9 @@
 #  
 #-----------------
 #
-# Original Author: Guilherme Belfort Almeida
-# Contributor(s):  Caique Manochio
-# Updated by (and date): Guilherme Belfort Almeida 05/02/2024
+# Original Author: Guilherme Belfort Almeida, Caique Manochio
+# Contributor(s):
+# Updated by (and date): Guilherme Belfort Almeida 07/02/2024
 #
 # Dependencies: R
 #
