@@ -9,22 +9,24 @@
 #  
 #-----------------
 #
-# Original Author: Guilherme Belfort Almeida, Caique Manochio
+# Original Author: Guilherme Belfort Almeida
 # Contributor(s):  
-# Updated by (and date): Guilherme Belfort Almeida 05/02/2024
+# Updated by (and date): Guilherme Belfort Almeida 28/02/2024
 #
 # Dependencies: R
 #
 # Command line:
 
+library(openxlsx)
 library(clipr)
-library(readxl)
 
-#Lê o Excel da Frequência Alélica e cria uma lista com os SNPs
+#Lê o arquivo da Frequência Alélica e cria uma lista com os SNPs
 df <- read.xlsx(file.choose())
-lista_snps <- unique(grep("^.+(.1)$",names(df), value=TRUE, perl = TRUE))
-
-
+lista_snps.1 <- unique(grep("^.+(.1)$",names(df), value=TRUE, perl = TRUE))
+lista_snps.2 <- unique(grep("^.+(.2)$",names(df), value=TRUE, perl = TRUE))
+lista_snps.3 <- unique(grep("^.+(.3)$",names(df), value=TRUE, perl = TRUE))
+lista_snps.4 <- unique(grep("^.+(.4)$",names(df), value=TRUE, perl = TRUE))
+lista_snps <- c(lista_snps.1, lista_snps.2, lista_snps.3, lista_snps.4)
 
 calcular_correlacoes <- function(arquivo_excel, lista_snps) {
   
@@ -38,20 +40,23 @@ calcular_correlacoes <- function(arquivo_excel, lista_snps) {
     df[[snp]] <- as.numeric(df[[snp]])
     
     # realiza as correlações com cada ancestralidade
-    EAS <- cor.test(df[[snp]], df$EAS, method = "pearson")
-    EUR <- cor.test(df[[snp]], df$EUR, method = "pearson")
+    N_EUR <- cor.test(df[[snp]], df$N_EUR, method = "pearson")
+    W_AFR <- cor.test(df[[snp]], df$W_AFR, method = "pearson")
     NAT <- cor.test(df[[snp]], df$NAT, method = "pearson")
-    AFRL <- cor.test(df[[snp]], df$AFRL, method = "pearson")
-    EAS2 <- cor.test(df[[snp]], df$EAS2, method = "pearson")
+    EAS_W <- cor.test(df[[snp]], df$EAS_W, method = "pearson")
+    S_EUR <- cor.test(df[[snp]], df$S_EUR, method = "pearson")
+    E_AFR <- cor.test(df[[snp]], df$E_AFR, method = "pearson")
+    EAS_E <- cor.test(df[[snp]], df$EAS_E, method = "pearson")
     SAS <- cor.test(df[[snp]], df$SAS, method = "pearson")
-    AFR <- cor.test(df[[snp]], df$AFR, method = "pearson")
     
     # armazena os valores de p e R em um data frame
     valores_p_r <- data.frame(
       SNP = lista_snps <- gsub('\\.1','',snp),
-      Ancestralidade = c("EAS", "EUR", "NAT", "AFRL", "EAS2", "SAS", "AFR"),
-      Valor_p = c(EAS$p.value, EUR$p.value, NAT$p.value, AFRL$p.value, EAS2$p.value, SAS$p.value, AFR$p.value),
-      Valor_r = c(EAS$estimate, EUR$estimate, NAT$estimate, AFRL$estimate, EAS2$estimate, SAS$estimate, AFR$estimate)
+      Ancestralidade = c("N_EUR", "W_AFR", "NAT", "EAS_W", "S_EUR", "E_AFR", "EAS_E","SAS"),
+      Valor_p = c(N_EUR$p.value, W_AFR$p.value, NAT$p.value, EAS_W$p.value,
+                  S_EUR$p.value, E_AFR$p.value, EAS_E$p.value, SAS$p.value),
+      Valor_r = c(N_EUR$estimate, W_AFR$estimate, NAT$estimate, EAS_W$estimate,
+                  S_EUR$estimate, E_AFR$estimate, EAS_E$estimate, SAS$estimate)
     )
     
     # adiciona o data frame à lista de resultados
@@ -62,10 +67,7 @@ calcular_correlacoes <- function(arquivo_excel, lista_snps) {
   return(resultados)
 }
 
-resultados <- calcular_correlacoes(#"Caminho+nomeoutputaqui",
-  lista_snps)
-
 CorLista <- dplyr::bind_rows(resultados)
 # exporta os resultados para um arquivo Excel
-write.xlsx(CorLista, #"Caminho+nomeoutputaqui2",
+write.xlsx(CorLista, "caminho",
            rowNames = FALSE)
