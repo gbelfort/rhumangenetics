@@ -1,3 +1,22 @@
+#======================================================
+# Calculo de regressao entre frequencia alelica e media de ancestralidade 
+#=======================================================
+#
+# (C) Copyright 2024, by GP-PGx-UFTM and Contributors.
+#
+# 
+#-----------------
+#  
+#-----------------
+#
+# Original Author: Guilherme Belfort-Almeida and Fernanda Rodrigues-Soares
+# Contributor(s):  
+# Updated by (and date): Guilherme Belfort Almeida 02/08/2024
+#
+# Dependencies: R
+#
+# Command line:
+
 library(openxlsx)
 library(clipr)
 library(dplyr)
@@ -19,7 +38,8 @@ names(df) <- nomes_colunas
 
 
 lista_snps.1 <- unique(grep("^.+(.)$",names(df), value=TRUE, perl = TRUE))
-lista_snps <- lista_snps.1[lista_snps.1 != c("POP", "NAT2","AFRL", "EASL", "SAS", "NAT", "EURN", "AFRO", "EURS", "EASO")]
+lista_snps <- lista_snps.1[lista_snps.1 != c("POP", "NAT2","AFRL", "EASL", "SAS", 
+                                             "NAT", "EURN", "AFRO", "EURS", "EASO")]
 lista_snps <- gsub("\\.1$", "", lista_snps)
 
 
@@ -118,6 +138,6 @@ resultados <- calcular_correlacoes(arquivo_excel = "caminho_para_o_arquivo.xlsx"
 CorLista <- dplyr::bind_rows(resultados)
 
 # Exporta os resultados para um arquivo Excel
-write.xlsx(CorLista, "C:/Users/guilh/OneDrive/Área de Trabalho/PGx/MariESR1/ESR1_Corr_Regr_Spearman.xlsx", rowNames = FALSE)
+write.xlsx(CorLista, "C:/Users/guilh/OneDrive/Área de Trabalho/,xlsx", rowNames = FALSE)
 
 
