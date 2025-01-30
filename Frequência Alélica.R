@@ -138,6 +138,6 @@ Regress <- dplyr::bind_rows(resultados)
 
 # Exporta os resultados para um arquivo Excel
 
-write.xlsx(Regress, "C:/Users/guilh/OneDrive/Área de Trabalho/Regressoes.xlsx", rowNames = FALSE)
+write.xlsx(Regress, "C:/path", rowNames = FALSE)
 
 
