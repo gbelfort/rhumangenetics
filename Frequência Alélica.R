@@ -1,143 +1,80 @@
-#======================================================
-# Calculo de regressao entre frequencia alelica e media de ancestralidade 
-#=======================================================
-#
-# (C) Copyright 2024, by GP-PGx-UFTM and Contributors.
-#
-# 
-#-----------------
-#  
-#-----------------
-#
-# Original Author: Guilherme Belfort-Almeida and Fernanda Rodrigues-Soares
-# Contributor(s):  
-# Updated by (and date): Guilherme Belfort Almeida 02/08/2024
-#
-# Dependencies: R
-#
-# Command line:
+library('vcfR')
+library('adegenet')
+library('tibble')
+library('dplyr')
 
-library(openxlsx)
-library(clipr)
-library(dplyr)
+#importar vcf pro R
+vcf <- read.vcfR(file.choose())
 
-#Lê o arquivo da Frequência Alélica e cria uma lista com os SNPs
-#arranjar uma lista de SNPs
-df <- read.xlsx(file.choose())
+#meta data, fixed data e genotype data
+#genotype é o que tá importando aqui, fixed é informação do cromossomo e meta é meta
 
-nomes_colunas <- names(df)
-nomes_colunas <- gsub("\\.1$", "", nomes_colunas)
-# Excluir colunas que terminam com .0
-colunas_para_excluir <- grep("\\.0$", nomes_colunas, value = TRUE)
-df <- df[, !names(df) %in% colunas_para_excluir]
-# Renomear colunas que terminam com .1
-nomes_colunas <- names(df)
-nomes_colunas <- gsub("\\.1$", "", nomes_colunas)
-# Atualizar os nomes das colunas no dataframe 'df'
-names(df) <- nomes_colunas
+#extrair genotype data em dataframe
+gt <- extract.gt(vcf, element = "GT")
 
 
-lista_snps.1 <- unique(grep("^.+(.)$",names(df), value=TRUE, perl = TRUE))
-lista_snps <- setdiff(lista_snps.1, c("POP", "NAT2", "AFRL", "EASL", "SAS", "NAT",
-                                      "EURN", "AFRO", "EURS", "EASO"))
+#transpor para depois adicionar populações
+transposto <- as.data.frame(t(gt))
+transposto <- tibble::rownames_to_column(transposto,"ID")
+
+#importar correspondência indivíduo-população
+dados_pop_1kgp <- read.csv(file.choose(), sep = "\t")
+dados_pop_1kgp <- dados_pop_1kgp %>%
+  rename(ID = Sample.name)
+#organizar por ID
+Pops1KG <- dados_pop_1kgp[order(dados_pop_1kgp$ID),]
 
 
-calcular_correlacoes <- function(arquivo_excel, lista_snps) {
+merge <- left_join(transposto, Pops1KG, by= "ID")
+
+GENEDADO <- merge%>%
+  select(ID, Population.code, Population.name, everything()) %>%
+  select(-c("Sex","Biosample.ID","Superpopulation.code","Superpopulation.name",
+            "Population.elastic.ID", "Data.collections"))
+
+# renomear Population.code e Population.name para popCode e popName. adegenet não funciona se tiver nome de coluna com '.'
+names(GENEDADO)[names(GENEDADO) == "Population.code"] <- "popCode"
+names(GENEDADO)[names(GENEDADO) == "Population.name"] <- "popName"
+# Um indivíduo com pop.code IBS,IBS. Isso seria interpretado como uma população diferente já que uso popCode como base, mudei para IBS.
+GENEDADO[GENEDADO == 'IBS,IBS'] <- "IBS"
+GENEDADO[GENEDADO == 'IBS,MSL'] <- "IBS"
+# Trocar "|" por " "
+GENEDADO[] <- lapply(GENEDADO, function(x) gsub("\\|", " ", x))
+#ignorar isso abaixo
+GENEDADO$Phenotype2 <- GENEDADO$Phenotype
+View(GENEDADO)
+
+  popData <- subset(GENEDADO, popCode == popCode)
   
+  # Converter dados para genind
+  popGenind <- df2genind(X = popData[, -c(1, 2, 3)], pop= GENEDADO$popCode, sep = " ", ploidy = 2, ncode = 2)
   
-  # cria uma lista vazia para armazenar os resultados
-  resultados <- list()
+  # Converter genind em genpop
+  popGenpop <- genind2genpop(popGenind)
   
-  # loop pelos SNPs na lista
-  for (snp in lista_snps) {
-    # converte a coluna do SNP para numérico
-    df[[snp]] <- as.numeric(df[[snp]])
-    media_k9 <- data.frame(df$NAT2, df$AFRL, df$EASL, df$SAS,
-                           df$NAT, df$EURN, df$AFRO, df$EURS, df$EASO)
-    NAT2 <- as.numeric(media_k9$df.NAT2)
-    AFRL <- as.numeric(media_k9$df.AFRL)
-    EASL <- as.numeric(media_k9$df.EASL)
-    SAS <- as.numeric(media_k9$df.SAS)
-    NAT <- as.numeric(media_k9$df.NAT)
-    EURN <- as.numeric(media_k9$df.EURN)
-    AFRO <- as.numeric(media_k9$df.AFRO)
-    EURS <- as.numeric(media_k9$df.EURS)
-    EASO <- as.numeric(media_k9$df.EASO)
-    
-    
-    
-    
-    # realiza as correlações com cada ancestralidade
-    
-    cNAT2 <- cor.test(df[[snp]], NAT2, method = "pearson")
-    cAFRL <- cor.test(df[[snp]], AFRL, method = "pearson")
-    cEASL <- cor.test(df[[snp]], EASL, method = "pearson")
-    cSAS <- cor.test(df[[snp]], SAS, method = "pearson")
-    cNAT <- cor.test(df[[snp]], NAT, method = "pearson")
-    cEURN <- cor.test(df[[snp]], EURN, method = "pearson")
-    cAFRO <- cor.test(df[[snp]], AFRO, method = "pearson")
-    cEURS <- cor.test(df[[snp]], EURS, method = "pearson")
-    cEASO <- cor.test(df[[snp]], EASO, method = "pearson")
-    
-    
-    # realiza as regressões com cada ancestralidade
-    reg_NAT2 <- lm(df[[snp]] ~ NAT2)
-    reg_AFRL <- lm(df[[snp]] ~ AFRL)
-    reg_EASL <- lm(df[[snp]] ~ EASL)
-    reg_SAS <- lm(df[[snp]] ~ SAS)
-    reg_NAT <- lm(df[[snp]] ~ NAT)
-    reg_EURN <- lm(df[[snp]] ~ EURN)
-    reg_AFRO <- lm(df[[snp]] ~ AFRO)
-    reg_EURS <- lm(df[[snp]] ~ EURS)
-    reg_EASO <- lm(df[[snp]] ~ EASO)
-   
-     lista_ANCES <- unique(grep("^.+()$",names(media_k9), value=TRUE, perl = TRUE))
-     lista_ANCES <- gsub("^df\\.", "", lista_ANCES)
-     
-     resultados_df <- data.frame(beta = numeric(), p_value = numeric(), 
-                                 adjusted_r_squared = numeric(), ancestralidade = character())
-     
-     for(nome in lista_ANCES) {
-       summary_reg <- summary(get(paste0("reg_", nome)))
-       beta <- summary_reg$coefficients[nome, "Estimate"]
-       p_value <- summary_reg$coefficients[nome, "Pr(>|t|)"]
-       adjusted_r_squared <- summary_reg$adj.r.squared
-       
-       resultados_df <- rbind(resultados_df, 
-                              data.frame(Ancestralidade = nome, Beta = beta, p_regr = p_value, 
-                                         R_sqr_ajustado = adjusted_r_squared))
-     }
-     
-
-     
-     mariscudelersentiremossaudades <- data.frame(
-       SNP = lista_snps <- gsub('\\.1','',snp),
-       resultados_df,
-       p_corr = c(cNAT2$p.value, cAFRL$p.value, cEASL$p.value, cSAS$p.value,
-                   cNAT$p.value, cEURN$p.value, cAFRO$p.value, cEURS$p.value,
-                   cEASO$p.value),
-       R_corr = c(cNAT2$estimate, cAFRL$estimate, cEASL$estimate, cSAS$estimate,
-                   cNAT$estimate, cEURN$estimate, cAFRO$estimate, cEURS$estimate,
-                   cEASO$estimate)
-     )
-
-      # adiciona o data frame à lista de resultados
-      resultados[[snp]] <- mariscudelersentiremossaudades
-
-  }
+  # Fazer a frequência da tabela
+  popFreq <- makefreq(popGenpop, quiet = FALSE, missing = NA, truenames = TRUE)
+  popFreq<- as.data.frame(popFreq)
   
-  # retorna a lista de resultados
-return(resultados)
-}
+  # Mostrar a frequência no Console
+  cat("\n\n")
+  print(paste("Frequency table for population", popCode))
+  print(popFreq)
+  
+  # Colocar a tabela de frequência num arquivo .CSV
+  fileName <- paste0("_freq.csv", sep = "")
+  write.table(popFreq, file = fileName, sep = ",", col.names = TRUE, quote = FALSE)
 
-# Chama a função e armazena o resultado
-resultados <- calcular_correlacoes(arquivo_excel = "caminho_para_o_arquivo.xlsx", lista_snps = lista_snps)
-
-# Combina os dataframes individuais em um único dataframe
-Regress <- dplyr::bind_rows(resultados)
-
-# Exporta os resultados para um arquivo Excel
-
-write.xlsx(Regress, "C:/path", rowNames = FALSE)
-
-
+  library(writexl)
+  write_xlsx(popFreq, "popFreq.xlsx")
+  
+  library(writexl)
+  # Colocar a tabela de frequência num arquivo Excel
+  library(openxlsx)
+  excelFileName <- paste0(popFreq, "_freq.xlsx", sep = "")
+  write.xlsx(popFreq, file = excelFileName, colNames = TRUE)
+  View(popData)
+  
+  write.xlsx(popFreq, "C:/Users/guilh/OneDrive/Área de Trabalho/freqSLC1kg.xlsx", rowNames = TRUE)
+  SLCOr<- as.data.frame(popFreq)
+  
