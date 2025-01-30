@@ -75,6 +75,6 @@ View(GENEDADO)
   write.xlsx(popFreq, file = excelFileName, colNames = TRUE)
   View(popData)
   
-  write.xlsx(popFreq, "C:/Users/guilh/OneDrive/Área de Trabalho/freqSLC1kg.xlsx", rowNames = TRUE)
+  write.xlsx(popFreq, "C:/path", rowNames = TRUE)
   SLCOr<- as.data.frame(popFreq)
   
