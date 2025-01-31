@@ -1,6 +1,6 @@
-#======================================================
+#=========================================================================
 # Calculo de regressao entre frequencia alelica e media de ancestralidade 
-#=======================================================
+#=========================================================================
 #
 # (C) Copyright 2024, by GP-PGx-UFTM and Contributors.
 #
@@ -10,124 +10,98 @@
 #-----------------
 #
 # Original Author: Guilherme Belfort-Almeida and Fernanda Rodrigues-Soares
-# Contributor(s): 
-# Updated by (and date): Guilherme Belfort Almeida 11/28/2024
+# Contributor(s):  
+# Updated by (and D/M/Y): Guilherme Belfort Almeida 07/12/2024
 #
 # Dependencies: R
 #
 # Command line:
 
 library(openxlsx)
-library(clipr)
 library(dplyr)
 
-#Lê o arquivo da Frequência Alélica e cria uma lista com os SNPs
-#arranjar uma lista de SNPs
+# Lê o arquivo da Frequência Alélica e cria uma lista com os SNPs
 df <- read.xlsx(file.choose())
 
+# Limpeza das colunas no dataframe
 nomes_colunas <- names(df)
 nomes_colunas <- gsub("\\.1$", "", nomes_colunas)
-# Excluir colunas que terminam com .0
 colunas_para_excluir <- grep("\\.0$", nomes_colunas, value = TRUE)
 df <- df[, !names(df) %in% colunas_para_excluir]
-# Renomear colunas que terminam com .1
-nomes_colunas <- names(df)
 nomes_colunas <- gsub("\\.1$", "", nomes_colunas)
-# Atualizar os nomes das colunas no dataframe 'df'
 names(df) <- nomes_colunas
 
+# Lista de SNPs
+lista_snps <- setdiff(names(df), c("POP", "NAT2", "AFRL", "EASL", "SAS", 
+                                   "NAT", "EURN", "AFRO", "EURS", "EASO"))
 
-lista_snps.1 <- unique(grep("^.+(.)$",names(df), value=TRUE, perl = TRUE))
-lista_snps <- setdiff(lista_snps.1, c("POP", "NAT2", "AFRL", "EASL", "SAS", "NAT",
-                                      "EURN", "AFRO", "EURS", "EASO"))
 
-
+  
 calcular_correlacoes <- function(arquivo_excel, lista_snps) {
-  
-  
-  # cria uma lista vazia para armazenar os resultados
   resultados <- list()
   
-  # loop pelos SNPs na lista
   for (snp in lista_snps) {
-    # converte a coluna do SNP para numérico
-    df[[snp]] <- as.numeric(df[[snp]])
-    media_k9 <- data.frame(df$NAT2, df$AFRL, df$EASL, df$SAS,
-                           df$NAT, df$EURN, df$AFRO, df$EURS, df$EASO)
-    NAT2 <- as.numeric(media_k9$df.NAT2)
-    AFRL <- as.numeric(media_k9$df.AFRL)
-    EASL <- as.numeric(media_k9$df.EASL)
-    SAS <- as.numeric(media_k9$df.SAS)
-    NAT <- as.numeric(media_k9$df.NAT)
-    EURN <- as.numeric(media_k9$df.EURN)
-    AFRO <- as.numeric(media_k9$df.AFRO)
-    EURS <- as.numeric(media_k9$df.EURS)
-    EASO <- as.numeric(media_k9$df.EASO)
+    # Verifica se o SNP é numérico e converte se necessário
+    if (!is.numeric(df[[snp]])) {
+      df[[snp]] <- as.numeric(df[[snp]])
+    }
     
+    # Cria data frame das ancestralidades e assegura tipos numéricos
+    media_k9 <- data.frame(NAT2 = as.numeric(df$NAT2), 
+                           AFRL = as.numeric(df$AFRL), 
+                           EASL = as.numeric(df$EASL), 
+                           SAS = as.numeric(df$SAS),
+                           NAT = as.numeric(df$NAT), 
+                           EURN = as.numeric(df$EURN), 
+                           AFRO = as.numeric(df$AFRO), 
+                           EURS = as.numeric(df$EURS), 
+                           EASO = as.numeric(df$EASO))
+    lista_ances <- names(media_k9)
     
+    resultados_df <- data.frame(SNP = character(), 
+                                Beta = numeric(), 
+                                p_regr = numeric(),
+                                p_adj = numeric(),
+                                R_sqr_ajustado = numeric(), 
+                                Ancestralidade = character(),
+                                stringsAsFactors = FALSE)
     
+    p_values <- numeric() # Lista para armazenar p-values antes da correção
     
-    # realiza as correlações com cada ancestralidade
+    for (nome in lista_ances) {
+      reg_model <- lm(df[[snp]] ~ media_k9[[nome]])
+      summary_reg <- summary(reg_model)
+      
+      # Verifica se há coeficientes válidos
+      if (nrow(summary_reg$coefficients) > 1) {
+        beta <- summary_reg$coefficients[2, "Estimate"]
+        p_value <- summary_reg$coefficients[2, "Pr(>|t|)"]
+        adjusted_r_squared <- summary_reg$adj.r.squared
+      } else {
+        beta <- NA
+        p_value <- NA
+        adjusted_r_squared <- NA
+      }
+      
+      p_values <- c(p_values, p_value) # Armazena p-values
+      
+      resultados_df <- rbind(resultados_df, 
+                             data.frame(SNP = snp, 
+                                        Ancestralidade = nome,
+                                        Beta = beta,
+                                        p_adj = NA, # Placeholder
+                                        R_sqr_ajustado = adjusted_r_squared,
+                                        p_regr = p_value))
+    }
     
-    cNAT2 <- cor.test(df[[snp]], NAT2, method = "pearson")
-    cAFRL <- cor.test(df[[snp]], AFRL, method = "pearson")
-    cEASL <- cor.test(df[[snp]], EASL, method = "pearson")
-    cSAS <- cor.test(df[[snp]], SAS, method = "pearson")
-    cNAT <- cor.test(df[[snp]], NAT, method = "pearson")
-    cEURN <- cor.test(df[[snp]], EURN, method = "pearson")
-    cAFRO <- cor.test(df[[snp]], AFRO, method = "pearson")
-    cEURS <- cor.test(df[[snp]], EURS, method = "pearson")
-    cEASO <- cor.test(df[[snp]], EASO, method = "pearson")
+    # Bonferroni correction
+    p_adj_values <- p.adjust(p_values, method = "bonferroni")
+    resultados_df$p_adj <- p_adj_values
     
-    
-    # realiza as regressões com cada ancestralidade
-    reg_NAT2 <- lm(df[[snp]] ~ NAT2)
-    reg_AFRL <- lm(df[[snp]] ~ AFRL)
-    reg_EASL <- lm(df[[snp]] ~ EASL)
-    reg_SAS <- lm(df[[snp]] ~ SAS)
-    reg_NAT <- lm(df[[snp]] ~ NAT)
-    reg_EURN <- lm(df[[snp]] ~ EURN)
-    reg_AFRO <- lm(df[[snp]] ~ AFRO)
-    reg_EURS <- lm(df[[snp]] ~ EURS)
-    reg_EASO <- lm(df[[snp]] ~ EASO)
-   
-     lista_ANCES <- unique(grep("^.+()$",names(media_k9), value=TRUE, perl = TRUE))
-     lista_ANCES <- gsub("^df\\.", "", lista_ANCES)
-     
-     resultados_df <- data.frame(beta = numeric(), p_value = numeric(), 
-                                 adjusted_r_squared = numeric(), ancestralidade = character())
-     
-     for(nome in lista_ANCES) {
-       summary_reg <- summary(get(paste0("reg_", nome)))
-       beta <- summary_reg$coefficients[nome, "Estimate"]
-       p_value <- summary_reg$coefficients[nome, "Pr(>|t|)"]
-       adjusted_r_squared <- summary_reg$adj.r.squared
-       
-       resultados_df <- rbind(resultados_df, 
-                              data.frame(Ancestralidade = nome, Beta = beta, p_regr = p_value, 
-                                         R_sqr_ajustado = adjusted_r_squared))
-     }
-     
-
-     
-     mariscudelersentiremossaudades <- data.frame(
-       SNP = lista_snps <- gsub('\\.1','',snp),
-       resultados_df,
-       p_corr = c(cNAT2$p.value, cAFRL$p.value, cEASL$p.value, cSAS$p.value,
-                   cNAT$p.value, cEURN$p.value, cAFRO$p.value, cEURS$p.value,
-                   cEASO$p.value),
-       R_corr = c(cNAT2$estimate, cAFRL$estimate, cEASL$estimate, cSAS$estimate,
-                   cNAT$estimate, cEURN$estimate, cAFRO$estimate, cEURS$estimate,
-                   cEASO$estimate)
-     )
-
-      # adiciona o data frame à lista de resultados
-      resultados[[snp]] <- mariscudelersentiremossaudades
-
+    resultados[[snp]] <- resultados_df
   }
   
-  # retorna a lista de resultados
-return(resultados)
+  return(resultados)
 }
 
 # Chama a função e armazena o resultado
@@ -137,7 +111,5 @@ resultados <- calcular_correlacoes(arquivo_excel = "caminho_para_o_arquivo.xlsx"
 Regress <- dplyr::bind_rows(resultados)
 
 # Exporta os resultados para um arquivo Excel
-
-write.xlsx()
-
+write.xlsx(Regress, "C:/path", rowNames = FALSE)
 
