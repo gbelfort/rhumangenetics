@@ -286,8 +286,52 @@ calculate_population_frequencies <- function() {
     } else {
       snp_ids <- vcf@fix[, "ID"]
     }
+    # Function to make sample IDs unique by appending _1, _2, etc. to duplicates
+    fix_duplicate_sample_ids <- function(vcf) {
+      # Get sample names (excluding the FORMAT column)
+      sample_names <- colnames(vcf@gt)[-1]
+      
+      # Check if there are duplicates
+      if(any(duplicated(sample_names))) {
+        cat("Found duplicate sample IDs. Fixing...\n")
+        
+        # Create a named vector to track occurrences
+        name_counts <- rep(0, length(sample_names))
+        names(name_counts) <- sample_names
+        
+        # Create new unique names
+        new_names <- character(length(sample_names))
+        
+        # For each name, increment counter and create unique name
+        for(i in 1:length(sample_names)) {
+          current_name <- sample_names[i]
+          name_counts[current_name] <- name_counts[current_name] + 1
+          
+          if(name_counts[current_name] > 1) {
+            new_names[i] <- paste0(current_name, "_", name_counts[current_name])
+          } else {
+            new_names[i] <- current_name
+          }
+        }
+        
+        # Verify the new names are unique
+        if(any(duplicated(new_names))) {
+          stop("Failed to create unique sample IDs")
+        }
+        
+        # Set the new column names in the vcf object
+        colnames(vcf@gt) <- c(colnames(vcf@gt)[1], new_names)
+        
+        cat("Sample IDs have been made unique with _1, _2 suffix pattern\n")
+      }
+      
+      return(vcf)
+    }
+
+    cat("Checking for duplicate sample IDs...\n")
+    vcf <- fix_duplicate_sample_ids(vcf)
     
-    # Extract genotype data
+    # Now try the extraction
     dna_progress_bar(100, 30, message = "Extracting genotype data...")
     gt <- extract.gt(vcf)
     
