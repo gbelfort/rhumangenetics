@@ -286,55 +286,78 @@ calculate_population_frequencies <- function() {
     } else {
       snp_ids <- vcf@fix[, "ID"]
     }
-    # Function to make sample IDs unique by appending _1, _2, etc. to duplicates
-    fix_duplicate_sample_ids <- function(vcf) {
-      # Get sample names (excluding the FORMAT column)
-      sample_names <- colnames(vcf@gt)[-1]
+    fix_missing_rsids <- function(vcf) {
+      # Check if there are missing rsIDs (represented as ".")
+      rsids <- vcf@fix[, "ID"]
+      missing_indices <- which(rsids == ".")
       
-      # Check if there are duplicates
-      if(any(duplicated(sample_names))) {
-        cat("Found duplicate sample IDs. Fixing...\n")
+      if(length(missing_indices) > 0) {
+        cat("\nFound", length(missing_indices), "variants with missing rsIDs.\n")
+        cat("Replacing with position-based IDs...\n")
         
-        # Create a named vector to track occurrences
-        name_counts <- rep(0, length(sample_names))
-        names(name_counts) <- sample_names
-        
-        # Create new unique names
-        new_names <- character(length(sample_names))
-        
-        # For each name, increment counter and create unique name
-        for(i in 1:length(sample_names)) {
-          current_name <- sample_names[i]
-          name_counts[current_name] <- name_counts[current_name] + 1
-          
-          if(name_counts[current_name] > 1) {
-            new_names[i] <- paste0(current_name, "_", name_counts[current_name])
-          } else {
-            new_names[i] <- current_name
-          }
+        # Create position-based IDs for missing rsIDs
+        for(i in missing_indices) {
+          chr <- vcf@fix[i, "CHROM"]
+          pos <- vcf@fix[i, "POS"]
+          vcf@fix[i, "ID"] <- paste0("pos_", chr, "_", pos)
         }
         
-        # Verify the new names are unique
-        if(any(duplicated(new_names))) {
-          stop("Failed to create unique sample IDs")
-        }
-        
-        # Set the new column names in the vcf object
-        colnames(vcf@gt) <- c(colnames(vcf@gt)[1], new_names)
-        
-        cat("Sample IDs have been made unique with _1, _2 suffix pattern\n")
+        cat("Replaced missing rsIDs with position-based identifiers.\n")
       }
       
       return(vcf)
     }
-
+    
+    # Function to handle duplicate sample IDs while assuming they are the same individuals
+    handle_duplicate_samples <- function(vcf) {
+      sample_names <- colnames(vcf@gt)[-1]
+      
+      if(any(duplicated(sample_names))) {
+        cat("\nWARNING: Found duplicate sample IDs in VCF file.\n")
+        cat("Assuming duplicates represent the same individuals...\n")
+        
+        # Create a temporary copy of the VCF with unique names just for extraction
+        temp_vcf <- vcf
+        temp_sample_names <- colnames(temp_vcf@gt)[-1]
+        dup_indices <- which(duplicated(temp_sample_names))
+        
+        # Temporarily rename duplicates just for extraction
+        for(i in dup_indices) {
+          colnames(temp_vcf@gt)[i+1] <- paste0(temp_sample_names[i], "_temp_", i)
+        }
+        
+        cat("Created temporary unique IDs for extraction process.\n")
+        return(temp_vcf)
+      }
+      
+      return(vcf)
+    }
+    
+    
+    
     cat("Checking for duplicate sample IDs...\n")
-    vcf <- fix_duplicate_sample_ids(vcf)
+    original_sample_names <- colnames(vcf@gt)[-1]
+    has_duplicates <- any(duplicated(original_sample_names))
+    
+    if(has_duplicates) {
+      temp_vcf <- handle_duplicate_samples(vcf)
+    } else {
+      temp_vcf <- vcf
+    }
     
     # Now try the extraction
     dna_progress_bar(100, 30, message = "Extracting genotype data...")
-    gt <- extract.gt(vcf)
+    gt <- extract.gt(temp_vcf)
     
+    # If we used temporary names, restore the original names for downstream analysis
+    if(has_duplicates) {
+      # We need to be careful here - we want to restore the original column names
+      # but keep the data structure intact
+      colnames(gt) <- c("FORMAT", original_sample_names)
+      cat("Original sample names restored for analysis.\n")
+    }
+    
+    # Continue with your existing code...
     # Remove 'FORMAT' column if present
     if ("FORMAT" %in% rownames(gt)) {
       gt <- gt[-which(rownames(gt) == "FORMAT"), ]
