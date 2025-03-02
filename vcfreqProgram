@@ -1,0 +1,755 @@
+calculate_population_frequencies <- function() {
+  # Clear console and display header
+  cat("\014")  # Clear console
+  cat("===================================================\n")
+  cat("      VCF Population Allele Frequency Calculator   \n")
+  cat("===================================================\n\n")
+  
+  # Function to print memory usage
+  print_memory_usage <- function() {
+    mem_used <- gc()[2, 2] / 1024  # Convert to MB
+    cat(sprintf("Memory usage: %.2f MB\n", mem_used))
+  }
+  
+  # Set max memory limit for future package
+  options(future.globals.maxSize = 4 * 1024^3)  # 4GB
+  
+  # Define required packages
+  required_packages <- c(
+    "vcfR", "adegenet", "ggplot2", "dplyr", "tidyr", 
+    "parallel", "future", "promises", "stringr"
+  )
+  
+  # Define dependency packages that might need updating
+  dependency_packages <- c(
+    "Rcpp", "RcppArmadillo", "ape", "methods", "utils"
+  )
+  
+  # Function to safely detach a package if it's loaded
+  detach_if_loaded <- function(pkg) {
+    if (paste0("package:", pkg) %in% search()) {
+      detach(paste0("package:", pkg), character.only = TRUE, unload = TRUE, force = TRUE)
+      return(TRUE)
+    }
+    return(FALSE)
+  }
+  
+  # Function to check if package is installed and install if needed
+  check_and_install <- function(pkg) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      cat("Installing package:", pkg, "\n")
+      install.packages(pkg, dependencies = TRUE, quiet = TRUE)
+      return(TRUE)
+    }
+    return(FALSE)
+  }
+  
+  # First, check and install all required packages and dependencies
+  cat("Checking required packages...\n")
+  invisible(lapply(c(dependency_packages, required_packages), check_and_install))
+  
+  # Finally, load all required packages
+  invisible(lapply(required_packages, function(pkg) {
+    tryCatch({
+      library(pkg, character.only = TRUE, quietly = TRUE)
+    }, error = function(e) {
+      cat("Error loading package", pkg, ":", conditionMessage(e), "\n")
+    })
+  }))
+  library(future)
+  library(promises)
+  
+  # Updated DNA progress bar function that accepts an animation frame parameter
+  dna_progress_bar <- function(total, current, message = "", animation_frame = NULL) {
+    # If no animation frame is provided, generate one
+    if (is.null(animation_frame)) {
+      animation_frame <- current  # Default to using current if no frame provided
+    }
+    
+    # Calculate progress
+    progress_pct <- floor(current / total * 100)
+    
+    # Build the progress bar
+    bar_width <- 50
+    progress_blocks <- floor((current / total) * bar_width)
+    progress_bar <- paste0(
+      "[", 
+      strrep("#", progress_blocks), 
+      strrep(" ", bar_width - progress_blocks), 
+      "] ", progress_pct, "%"
+    )
+    
+    # Horizontal scrolling DNA pattern
+    dna_width <- 60  # Width of the DNA pattern display area
+    
+    # ASCII art for DNA
+    base_pattern <- c(
+      "_ .--''--._    _.--''--. .--''--._     _.--''--. ",
+      " '-:.'||\"':-. '-:.'||\"':-. '-:.'||\"':-. '-:.'||\"':-.",
+      " ' '. | | | |'. '. | | | |'. '. | | | |'. '. | | | ",
+      " '. '.| | | | '. '.| | | | '. '.| | | | '. '.| | | | ",
+      " '. .:_ | :_.' '.  .:_ | :.' '. .:_ | :_.' '  .: | :_",
+      " -..,..-'       -..,..-' -..,..-'   -..,..-' "
+    )
+    
+    # Duplicate the pattern to ensure it's long enough
+    base_pattern_extended <- lapply(base_pattern, function(line) {
+      paste0(rep(line, 3), collapse="")
+    })
+    
+    # Calculate offset for scrolling effect - use animation_frame for continuous animation
+    # This is the key change - use modulo of animation_frame instead of current
+    offset <- animation_frame %% (nchar(base_pattern_extended[[1]]) - dna_width)
+    
+    # Create scrolling effect by shifting the pattern
+    dna_frames <- lapply(base_pattern_extended, function(line) {
+      start_pos <- offset + 1
+      substr(line, start_pos, start_pos + dna_width - 1)
+    })
+    
+    # Clear console and print header
+    cat("\014")  # Clear console
+    cat("===================================================\n")
+    cat("      VCF Population Allele Frequency Calculator   \n")
+    cat("===================================================\n\n")
+    
+    # Print progress bar and message
+    cat(progress_bar, "\n")
+    if (message != "") cat(message, "\n\n")
+    
+    # Print the scrolling DNA pattern
+    cat(paste(dna_frames, collapse = "\n"), "\n")
+  }
+  
+  # Function to track progress with a spinning DNA helix animation
+  run_with_async_progress <- function(total, operation_fn) {
+    # Create a shared variable to track progress using a list in global environment
+    if (!exists("progress_state", envir = .GlobalEnv)) {
+      assign("progress_state", list(current = 0, animation_frame = 0), envir = .GlobalEnv)
+    } else {
+      progress_state$current <- 0
+      progress_state$animation_frame <- 0
+    }
+    
+    message <- "Processing data..."
+    
+    # Configure future to run in background
+    plan(multisession)
+    
+    # Start the operation in the background
+    future_result <- future({
+      # The actual work happens here
+      result <- operation_fn(function(current) {
+        # Update the shared progress variable
+        progress_state$current <<- current
+      })
+      return(result)
+    })
+    
+    # While the operation is not finished, update the progress bar
+    while (!resolved(future_result) && !inherits(future_result, "FutureError")) {
+      # Get current progress from the shared state
+      current_progress <- progress_state$current
+      
+      # Increment animation frame counter independently of progress
+      # This ensures continuous animation regardless of processing progress
+      progress_state$animation_frame <- progress_state$animation_frame + 1
+      
+      # Call the DNA progress bar with current progress but independent animation
+      dna_progress_bar(total, current_progress, message, progress_state$animation_frame)
+      
+      # Small pause to avoid CPU overload
+      Sys.sleep(0.1)
+    }
+    
+    # Check if there was an error
+    if (inherits(future_result, "FutureError")) {
+      cat("\nError in background process:", conditionMessage(future_result), "\n")
+      return(NULL)
+    }
+    
+    # Show completion
+    dna_progress_bar(total, total, "Processing complete!", progress_state$animation_frame)
+    
+    # Return the result of the operation
+    return(value(future_result))
+  }
+  
+  ###########################################
+  # COLLECT ALL INPUTS AT THE BEGINNING
+  ###########################################
+  
+  # Ask how many VCF files to process
+  cat("How many VCF files would you like to process? ")
+  num_vcfs <- as.numeric(readline())
+  
+  if (is.na(num_vcfs) || num_vcfs < 1) {
+    cat("Please enter a valid number greater than 0.\n")
+    return(NULL)
+  }
+  
+  # Ask what frequency type to calculate
+  cat("\nWhat frequencies do you want to calculate?\n")
+  cat("1: Allele frequencies only\n")
+  cat("2: Genotype frequencies only\n")
+  cat("3: Both allele and genotype frequencies\n")
+  cat("Enter your choice (1-3): ")
+  freq_choice <- as.integer(readline())
+  
+  freq_type <- switch(freq_choice,
+                      "1" = "allele",
+                      "2" = "genotype",
+                      "3" = "both",
+                      "both")  # Default to both if invalid input
+  
+  # Ask for number of CPU cores to use
+  available_cores <- parallel::detectCores()
+  cat("\nYour system has", available_cores, "CPU cores available.\n")
+  cat("How many cores would you like to use? (Recommended: ", max(1, available_cores - 1), "): ", sep="")
+  num_cores <- as.integer(readline())
+  
+  cat("Setting up parallel processing with", num_cores, "cores...\n")
+  cl <- makeCluster(num_cores)
+  registerDoParallel(cl)
+  
+  
+  if (is.na(num_cores) || num_cores < 1 || num_cores > available_cores) {
+    num_cores <- max(1, available_cores - 1)  # Default to all but one core
+    cat("Using", num_cores, "cores.\n")
+  }
+  
+  # Ask for output file base name
+  cat("\nEnter base name for output files (e.g., 'Freq_GST'): ")
+  output_base <- readline()
+  
+  if (output_base == "") {
+    output_base <- format(Sys.time(), "freq_analysis_%Y%m%d_%H%M%S")
+    cat("Using default output name:", output_base, "\n")
+  }
+  
+  # Collect VCF files and population files upfront
+  vcf_files <- list()
+  pop_info_files <- list()
+  vcf_labels <- character(num_vcfs)
+  
+  for (i in 1:num_vcfs) {
+    cat("\n--- VCF File", i, "---\n")
+    
+    # Get VCF file
+    cat("Select VCF file", i, "...\n")
+    vcf_file <- file.choose()
+    vcf_files[[i]] <- vcf_file
+    
+    # Get VCF label
+    cat("Enter a short label for this VCF (e.g., '1KG', 'Peruanos'): ")
+    vcf_label <- readline()
+    if (vcf_label == "") {
+      vcf_label <- paste0("VCF", i)
+    }
+    vcf_labels[i] <- vcf_label
+    
+    # Get population file
+    cat("Select population information file for", vcf_label, "...\n")
+    pop_file <- file.choose()
+    pop_info_files[[i]] <- pop_file
+  }
+  
+  ###########################################
+  # START ANALYSIS AFTER ALL INPUTS
+  ###########################################
+  # Initialize results storage
+  all_freq_results <- list()
+  all_pops <- character(0)
+  all_wb <- list() # Store workbooks for each VCF
+  
+  # Process each VCF file
+  for (i in 1:num_vcfs) {
+    cat("\n=== Processing VCF", i, "of", num_vcfs, "===\n")
+    vcf_file <- vcf_files[[i]]
+    pop_info_file <- pop_info_files[[i]]
+    vcf_name <- vcf_labels[i]
+    
+    dna_progress_bar(num_vcfs, i - 0.75, message = paste("Processing VCF file", i, "of", num_vcfs, "-", vcf_name))
+    
+    # Read VCF file
+    dna_progress_bar(100, 10, message = "Reading VCF file...")
+    vcf <- read.vcfR(vcf_file, verbose = FALSE)
+    
+    # Extract sample IDs
+    vcf_samples <- colnames(vcf@gt)[-1]  # First column is FORMAT
+    cat("\nDetected", length(vcf_samples), "samples in VCF file\n")
+    
+    # Generate SNP IDs using RSIDs if available
+    if (all(vcf@fix[, "ID"] == ".")) {
+      dna_progress_bar(100, 20, message = "Generating SNP IDs...")
+      snp_ids <- paste(vcf@fix[, "CHROM"], vcf@fix[, "POS"], sep = "_")
+    } else {
+      snp_ids <- vcf@fix[, "ID"]
+    }
+    
+    # Extract genotype data
+    dna_progress_bar(100, 30, message = "Extracting genotype data...")
+    gt <- extract.gt(vcf)
+    
+    # Remove 'FORMAT' column if present
+    if ("FORMAT" %in% rownames(gt)) {
+      gt <- gt[-which(rownames(gt) == "FORMAT"), ]
+    }
+    
+    # Convert to data frame efficiently
+    dna_progress_bar(100, 40, message = "Converting VCF to data frame...")
+    transposed_gt <- t(gt)
+    transposed_gt <- as_tibble(cbind(ID = rownames(transposed_gt), transposed_gt))
+    rownames(transposed_gt) <- NULL
+    
+    # Use SNP IDs as column names
+    if (length(snp_ids) == (ncol(transposed_gt) - 1)) {
+      colnames(transposed_gt) <- c("ID", snp_ids)
+    } else {
+      colnames(transposed_gt)[-1] <- paste0("SNP", 1:(ncol(transposed_gt) - 1))
+    }
+    
+    # Detect genotype separator
+    genotype_sample <- unlist(transposed_gt[, -1], use.names = FALSE)
+    
+    # Function to detect genotype separator
+    detect_separator <- function(genotype_sample) {
+      # Remove missing genotypes
+      genotype_sample <- genotype_sample[!is.na(genotype_sample) & !genotype_sample %in% c("./.", ".|.", ".", "")]
+      # Take a sample if data is large
+      genotype_sample <- sample(genotype_sample, min(1000, length(genotype_sample)))
+      # Check for presence of '|' or '/'
+      if (any(grepl("\\|", genotype_sample))) {
+        return("|")
+      } else if (any(grepl("/", genotype_sample))) {
+        return("/")
+      } else {
+        # Default to '/'
+        return("/")
+      }
+    }
+    
+    # Detect the genotype separator
+    sep <- detect_separator(genotype_sample)
+    cat("Detected genotype separator: '", sep, "'\n", sep = "")
+    
+    # Read population information file
+    file_ext <- tolower(tools::file_ext(pop_info_file))
+    if (file_ext == "xlsx" || file_ext == "xls") {
+      pop_info <- read_excel(pop_info_file)
+    } else if (file_ext == "csv") {
+      pop_info <- read.csv(pop_info_file, stringsAsFactors = FALSE)
+    } else if (file_ext == "tsv" || file_ext == "txt") {
+      pop_info <- read.delim(pop_info_file, stringsAsFactors = FALSE)
+    } else {
+      stop("Unsupported file format for population information. Please use Excel, CSV, or TSV.")
+    }
+    
+    # Check column names and rename if needed
+    if (!"ID" %in% colnames(pop_info)) {
+      cat("Column 'ID' not found. Available columns:", paste(colnames(pop_info), collapse = ", "), "\n")
+      cat("Which column has sample IDs? Enter column name: ")
+      id_col <- readline()
+      names(pop_info)[names(pop_info) == id_col] <- "ID"
+    }
+    
+    # Check for population code column with a broader range of possible names
+    pop_code_candidates <- c(
+      "popCode", "Population.code", "Pop_Code", "Population", "POP",
+      "pop", "Pop", "População", "Populacao", "population",
+      "SuperPop", "Super_Population", "Group", "Ethnicity"
+    )
+    pop_code_col <- NULL
+    for (col in pop_code_candidates) {
+      if (col %in% colnames(pop_info)) {
+        pop_code_col <- col
+        break
+      }
+    }
+    
+    if (is.null(pop_code_col)) {
+      cat("Population column not found. Available columns:", paste(colnames(pop_info), collapse = ", "), "\n")
+      cat("Which column contains population codes/names? Enter column name: ")
+      pop_code_col <- readline()
+    }
+    
+    # Show a sample of the population assignments and ask for confirmation
+    cat("\nSample of population assignments using column '", pop_code_col, "':\n", sep = "")
+    sample_size <- min(10, nrow(pop_info))
+    sample_data <- data.frame(
+      ID = pop_info$ID[1:sample_size],
+      Population = pop_info[[pop_code_col]][1:sample_size]
+    )
+    print(sample_data)
+    
+    # Count populations
+    pop_counts <- table(pop_info[[pop_code_col]])
+    cat("\nPopulation counts:\n")
+    print(pop_counts)
+    
+    # Check for mismatch between VCF and population file
+    matching_samples <- sum(pop_info$ID %in% vcf_samples)
+    vcf_only_samples <- length(vcf_samples) - matching_samples
+    pop_only_samples <- nrow(pop_info) - matching_samples
+    cat("\nTotal individuals in population file:", nrow(pop_info), "\n")
+    cat("Total individuals in VCF file:", length(vcf_samples), "\n")
+    cat("Individuals matched between VCF and population file:", matching_samples, "\n")
+    cat("Number of VCF samples not in population file:", vcf_only_samples, "\n")
+    cat("Number of population file entries not in VCF file:", pop_only_samples, "\n")
+    
+    if (vcf_only_samples > 0) {
+      cat("Warning: Not all VCF samples are in the population file\n")
+    }
+    if (pop_only_samples > 0) {
+      cat("Warning: Not all population file entries match VCF samples\n")
+    }
+    
+    # Ask for confirmation
+    cat("\nIs this population assignment correct? (Y/N): ")
+    confirm <- toupper(readline())
+    while (confirm != "Y") {
+      if (confirm == "N") {
+        cat("Available columns:", paste(colnames(pop_info), collapse = ", "), "\n")
+        cat("Which column contains population codes/names? Enter column name: ")
+        pop_code_col <- readline()
+        
+        # Show the new sample
+        cat("\nSample of population assignments using column '", pop_code_col, "':\n", sep = "")
+        sample_data <- data.frame(
+          ID = pop_info$ID[1:sample_size],
+          Population = pop_info[[pop_code_col]][1:sample_size]
+        )
+        print(sample_data)
+        
+        # Count populations
+        pop_counts <- table(pop_info[[pop_code_col]])
+        cat("\nPopulation counts:\n")
+        print(pop_counts)
+        
+        # Updated mismatch check
+        matching_samples <- sum(pop_info$ID %in% vcf_samples)
+        vcf_only_samples <- length(vcf_samples) - matching_samples
+        pop_only_samples <- nrow(pop_info) - matching_samples
+        cat("\nTotal individuals in population file:", nrow(pop_info), "\n")
+        cat("Total individuals in VCF file:", length(vcf_samples), "\n")
+        cat("Individuals matched between VCF and population file:", matching_samples, "\n")
+        cat("Number of VCF samples not in population file:", vcf_only_samples, "\n")
+        cat("Number of population file entries not in VCF file:", pop_only_samples, "\n")
+        
+        if (vcf_only_samples > 0) {
+          cat("Warning: Not all VCF samples are in the population file\n")
+        }
+        if (pop_only_samples > 0) {
+          cat("Warning: Not all population file entries match VCF samples\n")
+        }
+        
+        cat("\nIs this population assignment correct? (Y/N): ")
+        confirm <- toupper(readline())
+      } else {
+        cat("Please enter Y or N: ")
+        confirm <- toupper(readline())
+      }
+    }
+    
+    # Exclude samples without population assignments if user agrees
+    if (matching_samples < length(vcf_samples)) {
+      cat("\nSome samples in the VCF do not have population assignments.\n")
+      cat("Do you want to exclude these samples from the analysis? If not, they will be set to NA population. (Y/N): ")
+      exclude_samples <- toupper(readline())
+      while (exclude_samples != "Y" && exclude_samples != "N") {
+        cat("Please enter Y or N: ")
+        exclude_samples <- toupper(readline())
+      }
+    } else {
+      exclude_samples <- "N"
+    }
+    
+    # Rename the population column for consistency
+    names(pop_info)[names(pop_info) == pop_code_col] <- "popCode"
+    
+    # Keep only necessary columns from pop_info to reduce memory usage
+    pop_info <- pop_info[, c("ID", "popCode")]
+    
+    # Merge genotype data with population info
+    dna_progress_bar(100, 50, message = "Merging genotype data with population information...")
+    
+    # Merge genotype data with population info
+    genotype_data <- left_join(transposed_gt, pop_info, by = "ID")
+    
+    # Exclude samples without population assignments if user agrees
+    if (exclude_samples == "Y") {
+      excluded_samples <- sum(is.na(genotype_data$popCode))
+      genotype_data <- genotype_data[!is.na(genotype_data$popCode), ]
+      cat("Number of samples excluded from analysis:", excluded_samples, "\n")
+    }
+    
+    # Clean up population codes and add VCF name prefix
+    genotype_data$popCode <- paste(vcf_name, genotype_data$popCode, sep = "_")
+    
+    # Collect all populations for this VCF
+    vcf_pops <- unique(genotype_data$popCode)
+    all_pops <- c(all_pops, vcf_pops)
+    
+    # Create a workbook for this VCF
+    wb <- createWorkbook()
+    
+    # Replace missing genotypes with NA and remove separators
+    dna_progress_bar(100, 55, message = "Processing genotype data...")
+    genotype_columns <- colnames(genotype_data)[!(colnames(genotype_data) %in% c("ID", "popCode"))]
+    genotype_data[genotype_columns] <- lapply(
+      genotype_data[genotype_columns],
+      function(x) {
+        x <- ifelse(x %in% c("./.", ".|.", ".", "", NA), NA, x)
+        # Remove separators from genotype strings
+        x <- gsub(paste0("\\", sep), "", x)
+        return(x)
+      }
+    )
+    
+    # Convert to genind object
+    dna_progress_bar(100, 60, message = "Converting data to genind object...")
+    genind_obj <- df2genind(
+      X = genotype_data[, genotype_columns],
+      pop = genotype_data$popCode,
+      sep = "",
+      ploidy = 2,
+      NA.char = NA,
+      ncode = 1  # Since alleles are single characters after removing separators
+    )
+    
+    # For allele frequencies using adegenet
+    if (freq_type == "allele" || freq_type == "both") {
+      dna_progress_bar(100, 70, message = "Calculating allele frequencies using adegenet...")
+      # Convert genind to genpop
+      genpop_obj <- genind2genpop(genind_obj)
+      # Calculate allele frequencies
+      allele_freqs <- makefreq(genpop_obj, quiet = FALSE, missing = NA, truenames = TRUE)
+      # Convert to data frame
+      allele_freq_table <- as.data.frame(allele_freqs)
+      allele_freq_table$POP <- rownames(allele_freq_table)
+      rownames(allele_freq_table) <- NULL
+      # Reorder columns to have 'POP' first
+      allele_freq_table <- allele_freq_table %>% select(POP, everything())
+      # Store the allele frequency table
+      all_freq_results[[paste0(vcf_name, "_allele")]] <- allele_freq_table
+      # Add to workbook
+      addWorksheet(wb, "Allele_Frequencies")
+      writeData(wb, "Allele_Frequencies", allele_freq_table, rowNames = FALSE)
+    }
+    
+    # For genotype frequencies using adegenet
+    if (freq_type == "genotype" || freq_type == "both") {
+      dna_progress_bar(100, 80, message = "Calculating genotype frequencies using adegenet...")
+      # Use data.table for more efficient operations
+      genotype_data_df <- as.data.table(genind2df(genind_obj, sep = sep, usepop = TRUE))
+      # Process each population in chunks
+      pop_names <- unique(genotype_data_df$pop)
+      pop_results_files <- c()
+      # Process populations in parallel
+      for (pop_idx in seq_along(pop_names)) {
+        pop_name <- pop_names[pop_idx]
+        dna_progress_bar(100, 80 + (pop_idx/length(pop_names)*10),
+                         message = paste0("Processing population ", pop_idx, " of ",
+                                          length(pop_names), ": ", pop_name))
+        # Subset data for this population
+        pop_df <- genotype_data_df[pop == pop_name, ]
+        pop_df <- pop_df[, -which(names(pop_df) == "pop"), with = FALSE]
+        # Process chunks of SNPs to reduce memory pressure
+        snp_names <- colnames(pop_df)
+        chunk_size <- max(50, min(500, floor(length(snp_names)/10)))  # Adaptive chunk size
+        # More efficient processing with preallocated list
+        results_list <- vector("list", ceiling(length(snp_names)/chunk_size))
+        chunk_count <- 0
+        # Process SNPs in chunks
+        for (i_chunk in seq(1, length(snp_names), by = chunk_size)) {
+          chunk_count <- chunk_count + 1
+          dna_progress_bar(100, 80 + (pop_idx/length(pop_names)*10),
+                           message = paste0("Population ", pop_name,
+                                            ": chunk ", chunk_count))
+          # Get current chunk of SNPs
+          end_idx <- min(i_chunk + chunk_size - 1, length(snp_names))
+          chunk_snps <- snp_names[i_chunk:end_idx]
+          # Process this chunk using lapply for better performance
+          chunk_results <- lapply(chunk_snps, function(snp_name) {
+            # Count genotypes
+            tbl <- table(pop_df[[snp_name]])
+            if (length(tbl) > 0) {
+              # Convert to frequencies
+              freq <- prop.table(tbl)
+              # Return results as data frame
+              data.frame(
+                POP = pop_name,
+                SNP = snp_name,
+                Genotype = names(freq),
+                Frequency = as.numeric(freq),
+                stringsAsFactors = FALSE
+              )
+            } else {
+              NULL
+            }
+          })
+          # Filter out NULL results and combine
+          chunk_results <- chunk_results[!sapply(chunk_results, is.null)]
+          if (length(chunk_results) > 0) {
+            results_list[[chunk_count]] <- do.call(rbind, chunk_results)
+          }
+          # Force garbage collection after each chunk
+          rm(chunk_results)
+          gc(verbose = FALSE)
+        }
+        # Combine all non-NULL results for this population
+        results_list <- results_list[!sapply(results_list, is.null)]
+        if (length(results_list) > 0) {
+          pop_genotype_freq_table <- do.call(rbind, results_list)
+          # Write population results to disk to save memory
+          pop_output_file <- file.path(tempdir(),
+                                       paste0("pop_", gsub("[^a-zA-Z0-9]", "_", pop_name), ".rds"))
+          saveRDS(pop_genotype_freq_table, pop_output_file)
+          pop_results_files <- c(pop_results_files, pop_output_file)
+          # Clean up
+          rm(pop_genotype_freq_table, results_list)
+          gc(verbose = FALSE)
+        }
+      }
+      # Read and combine all saved population results
+      genotype_freq_table <- NULL
+      if (length(pop_results_files) > 0) {
+        genotype_freq_table <- do.call(rbind, lapply(pop_results_files, readRDS))
+        # Clean up temporary files
+        lapply(pop_results_files, file.remove)
+        # More memory-efficient wide format transformation using tidyr
+        if (!is.null(genotype_freq_table) && nrow(genotype_freq_table) > 0) {
+          # Create sparse representation
+          genotype_freq_wide <- genotype_freq_table %>%
+            mutate(SNP_Genotype = paste(SNP, Genotype, sep = "_")) %>%
+            select(POP, SNP_Genotype, Frequency) %>%
+            pivot_wider(
+              names_from = SNP_Genotype,
+              values_from = Frequency,
+              values_fill = 0
+            )
+          # Clean up to free memory
+          rm(genotype_freq_table)
+          gc()
+          final_geno_table <- genotype_freq_wide
+          # Store the genotype frequency table
+          all_freq_results[[paste0(vcf_name, "_genotype")]] <- final_geno_table
+          # Add to workbook
+          addWorksheet(wb, "Genotype_Frequencies")
+          writeData(wb, "Genotype_Frequencies", final_geno_table, rowNames = FALSE)
+        }
+      }
+    }
+    
+    # Save the workbook for this VCF
+    wb_file <- paste0(output_base, "_", vcf_name, ".xlsx")
+    saveWorkbook(wb, wb_file, overwrite = TRUE)
+    cat("\nSaved results for", vcf_name, "to", wb_file, "\n")
+    
+    # Store workbook reference
+    all_wb[[vcf_name]] <- wb
+    
+    # Debug statement at the end of each iteration
+    cat("\n=== Completed VCF", i, "of", num_vcfs, "===\n")
+    cat("Current result keys:", paste(names(all_freq_results), collapse=", "), "\n")
+    
+    # Clean up large objects to save memory
+    rm(vcf, gt, transposed_gt, genotype_data, genind_obj)
+    if (exists("genpop_obj")) rm(genpop_obj)
+    if (exists("allele_freqs")) rm(allele_freqs)
+    if (exists("allele_freq_table")) rm(allele_freq_table)
+    if (exists("genotype_data_df")) rm(genotype_data_df)
+    if (exists("genotype_freq_wide")) rm(genotype_freq_wide)
+    if (exists("final_geno_table")) rm(final_geno_table)
+    gc(verbose = FALSE)
+  } # End of for loop processing each VCF file
+  
+  # Now merge all frequency tables if more than one VCF
+  if (num_vcfs > 1) {
+    cat("\n=== Merging results from all VCF files ===\n")
+    dna_progress_bar(100, 97, message = "Creating merged frequency tables...")
+    
+    # Create merged workbook
+    merged_wb <- createWorkbook()
+    
+    if (freq_type == "both" || freq_type == "allele") {
+      # Create merged allele frequency table
+      merged_allele <- create_merged_table(all_freq_results, vcf_labels, "allele")
+      # Add to merged workbook
+      if (!is.null(merged_allele)) {
+        addWorksheet(merged_wb, "Allele_Frequencies")
+        writeData(merged_wb, "Allele_Frequencies", merged_allele, rowNames = FALSE)
+      }
+    }
+    
+    if (freq_type == "both" || freq_type == "genotype") {
+      # Create merged genotype frequency table
+      merged_genotype <- create_merged_table(all_freq_results, vcf_labels, "genotype")
+      # Add to merged workbook
+      if (!is.null(merged_genotype)) {
+        addWorksheet(merged_wb, "Genotype_Frequencies")
+        writeData(merged_wb, "Genotype_Frequencies", merged_genotype, rowNames = FALSE)
+      }
+    }
+    
+    # Save merged workbook
+    dna_progress_bar(100, 99, message = "Saving merged frequency tables...")
+    merged_output_file <- paste0(output_base, "_merged_frequencies.xlsx")
+    saveWorkbook(merged_wb, merged_output_file, overwrite = TRUE)
+    cat("Saved merged frequencies to", merged_output_file, "\n")
+  }
+  
+  
+  dna_progress_bar(100, 100, message = "Processing complete!")
+  cat("\nProcessing complete!\n")
+  
+  # Final cleanup
+  gc()
+  
+  return(all_freq_results)
+}
+
+# Create merged frequency tables
+create_merged_table <- function(all_freq_results, vcf_labels, freq_type) {
+  # Collect all tables of this frequency type
+  freq_tables <- list()
+  for (vcf_name in vcf_labels) {
+    result_key <- paste0(vcf_name, "_", freq_type)
+    
+    if (result_key %in% names(all_freq_results)) {
+      current_table <- as.data.frame(all_freq_results[[result_key]])
+      freq_tables[[vcf_name]] <- current_table
+    }
+  }
+  
+  if (length(freq_tables) == 0) {
+    cat("No", freq_type, "frequency tables found to merge.\n")
+    return(NULL)
+  }
+  
+  # Ensure consistent column names across tables
+  all_columns <- unique(unlist(lapply(freq_tables, colnames)))
+  
+  # Reorder and fill missing columns with zeros
+  freq_tables <- lapply(freq_tables, function(df) {
+    missing_cols <- setdiff(all_columns, colnames(df))
+    if (length(missing_cols) > 0) {
+      df[missing_cols] <- 0
+    }
+    df <- df[, all_columns]
+    return(df)
+  })
+  
+  # Merge dataframes by 'POP'
+  merged_table <- Reduce(function(x, y) {
+    merge(x, y, by = "POP", all = TRUE, suffixes = c("", ""))
+  }, freq_tables)
+  
+  # Replace NA values with 0
+  merged_table[is.na(merged_table)] <- 0
+  
+  return(merged_table)
+}
+
+# Run the function 
+results <- calculate_population_frequencies()
