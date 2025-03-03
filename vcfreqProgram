@@ -4,7 +4,7 @@ calculate_population_frequencies <- function() {
   cat("===================================================\n")
   cat("      VCF Population Allele Frequency Calculator   \n")
   cat("===================================================\n\n")
-  
+   
   # Function to print memory usage
   print_memory_usage <- function() {
     mem_used <- gc()[2, 2] / 1024  # Convert to MB
