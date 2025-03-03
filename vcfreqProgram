@@ -357,7 +357,6 @@ calculate_population_frequencies <- function() {
       cat("Original sample names restored for analysis.\n")
     }
     
-    # Continue with your existing code...
     # Remove 'FORMAT' column if present
     if ("FORMAT" %in% rownames(gt)) {
       gt <- gt[-which(rownames(gt) == "FORMAT"), ]
