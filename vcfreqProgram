@@ -16,8 +16,9 @@ calculate_population_frequencies <- function() {
   
   # Define required packages
   required_packages <- c(
-    "vcfR", "adegenet", "ggplot2", "dplyr", "tidyr", 
-    "parallel", "future", "promises", "stringr"
+    "vcfR", "adegenet", "tibble", "dplyr", "readxl",
+    "openxlsx", "parallel", "stringr", "progress",
+    "foreach", "doParallel", "tidyr", "data.table"
   )
   
   # Define dependency packages that might need updating
